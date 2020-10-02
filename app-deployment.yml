@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-deploy
+  labels:
+    app: app-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app-deploy
+  template:
+    metadata:
+      labels:
+        app: app-deploy
+    spec:
+      containers:
+      - image: iambhascker13/myimage:v2.1
+        name: myimage
+        env:
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-configmap
+              key: host_name
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-configmap
+              key: db_name
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mysql-cred
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-cred
+              key: password
+      initContainers:
+        - name: init-mysql
+          image: busybox
+          command: ['sh', '-c', "until nslookup mysql-deploy.default.svc.cluster.local; do echo waiting for mysql-deploy; sleep 2; done"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-deploy
+  labels:
+    app: app-deploy
+spec:
+  ports:
+  - name: web
+    port: 9200
+    targetPort: 8080
+    nodePort: 30001
+    protocol: TCP
+  selector:
+    app: app-deploy
+  type: NodePort
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: app-deploy
+  labels:
+    release: prometheus-operator
+    app: app-deploy
+  namespace: default
+spec:
+  endpoints:
+  - port: web
+    path: '/actuator/prometheus'
+  selector:
+    matchLabels:
+      app: app-deploy
